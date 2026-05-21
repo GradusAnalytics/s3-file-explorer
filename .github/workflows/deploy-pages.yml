@@ -1,0 +1,94 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout branch atual
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Identificar branch
+        id: vars
+        run: echo "branch=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
+
+      - name: Checkout gh-pages (ou cria se não existir)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code origin gh-pages; then
+            git fetch origin gh-pages
+            git checkout gh-pages
+          else
+            git checkout --orphan gh-pages
+            git rm -rf . || true
+            echo "GitHub Pages - Gradus Freeform Template" > README.md
+            git add README.md
+            git commit -m "chore: inicializa branch gh-pages"
+          fi
+
+      - name: Copiar HTMLs da branch para pasta correspondente
+        run: |
+          BRANCH="${{ steps.vars.outputs.branch }}"
+          mkdir -p "$BRANCH"
+          for file in $(git ls-tree --name-only origin/$BRANCH | grep '\.html$'); do
+            git show origin/$BRANCH:$file > "$BRANCH/$file"
+            echo "Copiado: $file → $BRANCH/$file"
+          done
+
+      - name: Atualizar index.html raiz
+        run: |
+          LINKS=""
+          for b in main dev; do
+            if [ -d "$b" ]; then
+              FILES=$(find "$b" -name "*.html" | sed "s|$b/||" | sort)
+              if [ -n "$FILES" ]; then
+                LINKS="$LINKS<div class=\"branch\"><div class=\"branch-name\">$b</div>"
+                for f in $FILES; do
+                  LINKS="$LINKS<a href=\"$b/$f\">$f</a>"
+                done
+                LINKS="$LINKS</div>"
+              fi
+            fi
+          done
+
+          cat > index.html << HTMLEOF
+          <!DOCTYPE html>
+          <html lang="pt-BR">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>Gradus Freeform — Ferramentas Disponíveis</title>
+            <style>
+              body{font-family:sans-serif;background:#F4F6FA;color:#002060;padding:40px;max-width:800px;margin:0 auto}
+              h1{font-size:22px;margin-bottom:6px}
+              p{font-size:13px;color:#7B8EA0;margin-bottom:32px}
+              .branch{margin-bottom:24px}
+              .branch-name{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#9DB1CF;margin-bottom:8px}
+              a{display:block;font-size:14px;font-weight:600;color:#306F9F;padding:8px 12px;background:#fff;border:1px solid #D9DCE6;border-radius:4px;margin-bottom:6px;text-decoration:none}
+              a:hover{border-color:#002060;color:#002060}
+            </style>
+          </head>
+          <body>
+            <h1>Gradus Freeform — Ferramentas</h1>
+            <p>Lista de ferramentas disponíveis por branch. Atualizada automaticamente a cada push.</p>
+            $LINKS
+          </body>
+          </html>
+          HTMLEOF
+
+      - name: Commit e push para gh-pages
+        run: |
+          git add .
+          git diff --staged --quiet || git commit -m "deploy: atualiza ${{ steps.vars.outputs.branch }} → gh-pages"
+          git push origin gh-pages
