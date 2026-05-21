@@ -365,6 +365,7 @@ let selected      = new Set(); // keys selecionadas
 let pendingRename = null;
 let pendingDelete = null;
 let shareRecipients = []; // lista temporária no modal de share
+let currentView = 'own'; // 'own' | 'shared'
 
 // ── Init ──
 document.addEventListener('DOMContentLoaded', function() {
@@ -438,6 +439,7 @@ async function navTo(prefix) {
     const emailParam = email ? '&email=' + encodeURIComponent(email) : '';
     const d = await apiGet('/files?prefix=' + encodeURIComponent(prefix) + emailParam);
     currentItems = { folders: d.folders || [], files: d.files || [] };
+    currentView = 'own';
     renderList();
     renderBreadcrumb();
     renderTree(prefix, currentItems.folders);
@@ -582,31 +584,94 @@ function renderBreadcrumb() {
 // ── Tree ──
 function renderTree(activePrefix, subfolders) {
   const tree = document.getElementById('tree');
-  let html = `<div class="tree-item ${activePrefix===''?'active':''}" onclick="navTo('')"><span class="icon">📦</span><span class="name">Raiz</span></div>`;
-  if (activePrefix) {
-    const parts = activePrefix.replace(/\/$/, '').split('/');
-    let acc = '';
-    for (let i = 0; i < parts.length; i++) {
-      acc += parts[i] + '/';
-      const isLast = i === parts.length - 1;
-      const indent = 'padding-left:' + ((i+1)*16+12) + 'px';
-      const key = acc;
-      html += `<div class="tree-item ${isLast?'active':''}" style="${indent}" onclick="navTo('${esc(key)}')">
-        <span class="icon">📁</span><span class="name">${esc(parts[i])}</span></div>`;
-    }
-    for (const sf of (subfolders||[])) {
-      const indent = 'padding-left:' + ((parts.length+1)*16+12) + 'px';
-      html += `<div class="tree-item" style="${indent}" onclick="navTo('${esc(sf.key)}')">
-        <span class="icon">📁</span><span class="name">${esc(sf.name)}</span></div>`;
-    }
-  } else {
-    for (const sf of (subfolders||[])) {
-      html += `<div class="tree-item" style="padding-left:28px" onclick="navTo('${esc(sf.key)}')">
-        <span class="icon">📁</span><span class="name">${esc(sf.name)}</span></div>`;
+  const isShared = currentView === 'shared';
+
+  // Raiz
+  let html = `<div class="tree-item ${!isShared && activePrefix===''?'active':''}" onclick="navTo('');currentView='own';renderTree('',currentItems.folders)">
+    <span class="icon">📦</span><span class="name">Raiz</span></div>`;
+
+  // Pastas próprias na raiz
+  if (!isShared) {
+    if (activePrefix) {
+      const parts = activePrefix.replace(/\/$/, '').split('/');
+      let acc = '';
+      for (let i = 0; i < parts.length; i++) {
+        acc += parts[i] + '/';
+        const isLast = i === parts.length - 1;
+        const indent = 'padding-left:' + ((i+1)*16+12) + 'px';
+        const key = acc;
+        html += `<div class="tree-item ${isLast?'active':''}" style="${indent}" onclick="navTo('${esc(key)}')">
+          <span class="icon">📁</span><span class="name">${esc(parts[i])}</span></div>`;
+      }
+      for (const sf of (subfolders||[])) {
+        const indent = 'padding-left:' + ((parts.length+1)*16+12) + 'px';
+        html += `<div class="tree-item" style="${indent}" onclick="navTo('${esc(sf.key)}')">
+          <span class="icon">📁</span><span class="name">${esc(sf.name)}</span></div>`;
+      }
+    } else {
+      for (const sf of (subfolders||[])) {
+        html += `<div class="tree-item" style="padding-left:28px" onclick="navTo('${esc(sf.key)}')">
+          <span class="icon">📁</span><span class="name">${esc(sf.name)}</span></div>`;
+      }
     }
   }
+
+  // ── Pasta virtual Compartilhados ──
+  html += `<div class="tree-item ${isShared?'active':''}" onclick="navShared()" style="margin-top:6px">
+    <span class="icon">🗂️</span><span class="name" style="color:${isShared?'var(--dk1)':'#c0392b'}">Compartilhados</span></div>`;
+
   tree.innerHTML = html;
 }
+// ── Navegação para pasta virtual Compartilhados ──
+async function navShared() {
+  currentView = 'shared';
+  currentPrefix = '';
+  selected.clear();
+  updateSelToolbar();
+  document.getElementById('file-list').innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-ttl">Carregando...</div></div>';
+  try {
+    const email = currentEmail();
+    if (!email) {
+      renderSharedEmpty('Faça login para ver itens compartilhados');
+      renderTree('', []);
+      return;
+    }
+    const emailParam = '&email=' + encodeURIComponent(email);
+    const d = await apiGet('/files?prefix=&all=1' + emailParam);
+    // Filtra só itens compartilhados com o usuário (não owns)
+    const sharedFolders = (d.folders||[]).filter(f => f.perm && !f.perm.is_owner);
+    const sharedFiles   = (d.files||[]).filter(f => f.perm && !f.perm.is_owner);
+    currentItems = { folders: sharedFolders, files: sharedFiles };
+
+    // Breadcrumb
+    document.getElementById('breadcrumb').innerHTML = `<span class="bc-item last">🗂️ <span style="color:#c0392b">Compartilhados</span></span>`;
+
+    // Upload/mkdir desabilitados na view compartilhados
+    document.getElementById('btn-upload').disabled = true;
+    document.getElementById('btn-mkdir').disabled = true;
+
+    renderList();
+    renderTree('', []);
+    document.getElementById('sb-prefix').textContent = 'Compartilhados';
+    document.getElementById('sb-count').textContent = sharedFolders.length + sharedFiles.length;
+
+    if (!sharedFolders.length && !sharedFiles.length) {
+      renderSharedEmpty('Nenhum item foi compartilhado com você ainda');
+    }
+  } catch(e) {
+    toast('Erro ao carregar compartilhados: ' + e.message, 'err');
+  }
+}
+
+function renderSharedEmpty(msg) {
+  document.getElementById('file-list').innerHTML = `<div class="empty-state">
+    <div class="empty-icon">🗂️</div>
+    <div class="empty-ttl">Pasta vazia</div>
+    <div class="empty-sub">${esc(msg)}</div>
+  </div>`;
+}
+
+
 
 // ── Upload ──
 function onDragOver(e) { e.preventDefault(); if (API) document.getElementById('drop-overlay').classList.add('show'); }
