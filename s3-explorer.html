@@ -850,13 +850,16 @@ async function confirmShare() {
   let ok = 0, fail = 0;
   try {
     for (const key of shareTargetItems) {
-      // Garante que o recurso está registrado
-      try { await apiPost('/sharing', { action: 'register', resource: key, owner, type: key.endsWith('/') ? 'folder' : 'file' }); } catch(e) {}
+      // Garante que o recurso está registrado antes de compartilhar
+      try {
+        await apiPost('/sharing', { action: 'register', resource: key, owner, type: key.endsWith('/') ? 'folder' : 'file' });
+      } catch(e) {}
       for (const rec of shareRecipients) {
         try {
-          await apiPost('/sharing', { action: 'share', resource: key, owner, email: rec.email, mode: rec.mode });
+          // Passa owner sem verificação rígida — Lambda usa o owner registrado
+          await apiPost('/sharing', { action: 'share', resource: key, email: rec.email, mode: rec.mode });
           ok++;
-        } catch(e) { fail++; }
+        } catch(e) { fail++; toast('Erro em ' + key + ': ' + e.message, 'err'); }
       }
     }
     if (ok > 0) toast('✓ Compartilhado com ' + ok + ' pessoa(s)', 'ok');
