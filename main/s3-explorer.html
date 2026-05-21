@@ -698,10 +698,8 @@ async function confirmMkdir() {
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
   try {
     const prefix = currentPrefix + name + '/';
-    await apiPost('/files/mkdir', { prefix });
-    // Registra ownership da pasta
     const owner = currentEmail() || 'joao.madeira@gradusconsultoria.com.br';
-    try { await apiPost('/sharing', { action: 'register', resource: prefix, owner, type: 'folder' }); } catch(e) {}
+    await apiPost('/files/mkdir', { prefix, owner });
     toast('✓ Pasta "' + name + '" criada', 'ok');
     closeModal('m-mkdir');
     reloadCurrent();
