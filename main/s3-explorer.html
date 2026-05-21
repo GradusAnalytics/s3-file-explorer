@@ -628,38 +628,45 @@ async function navShared() {
   currentPrefix = '';
   selected.clear();
   updateSelToolbar();
-  document.getElementById('file-list').innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-ttl">Carregando...</div></div>';
+  document.getElementById('btn-upload').disabled = true;
+  document.getElementById('btn-mkdir').disabled  = true;
+  document.getElementById('breadcrumb').innerHTML = `<span class="bc-item last">🗂️ <span style="color:#c0392b">Compartilhados</span></span>`;
+  document.getElementById('file-list').innerHTML  = '<div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-ttl">Carregando...</div></div>';
+  renderTree('', []);
+
+  const email = currentEmail();
+  if (!email) {
+    renderSharedEmpty('Faça login para ver itens compartilhados');
+    return;
+  }
+
   try {
-    const email = currentEmail();
-    if (!email) {
-      renderSharedEmpty('Faça login para ver itens compartilhados');
-      renderTree('', []);
-      return;
+    const d = await apiGet('/sharing?action=visible&email=' + encodeURIComponent(email));
+    const visible = d.visible || {};
+
+    const sharedFolders = [];
+    const sharedFiles   = [];
+    for (const [resource, perm] of Object.entries(visible)) {
+      if (perm.is_owner) continue;
+      const name = resource.endsWith('/')
+        ? resource.replace(/\/$/,'').split('/').pop()
+        : resource.split('/').pop();
+      const item = { key: resource, name, perm };
+      if (resource.endsWith('/')) sharedFolders.push(item);
+      else sharedFiles.push(item);
     }
-    const emailParam = '&email=' + encodeURIComponent(email);
-    const d = await apiGet('/files?prefix=&all=1' + emailParam);
-    // Filtra só itens compartilhados com o usuário (não owns)
-    const sharedFolders = (d.folders||[]).filter(f => f.perm && !f.perm.is_owner);
-    const sharedFiles   = (d.files||[]).filter(f => f.perm && !f.perm.is_owner);
+
     currentItems = { folders: sharedFolders, files: sharedFiles };
-
-    // Breadcrumb
-    document.getElementById('breadcrumb').innerHTML = `<span class="bc-item last">🗂️ <span style="color:#c0392b">Compartilhados</span></span>`;
-
-    // Upload/mkdir desabilitados na view compartilhados
-    document.getElementById('btn-upload').disabled = true;
-    document.getElementById('btn-mkdir').disabled = true;
-
     renderList();
-    renderTree('', []);
     document.getElementById('sb-prefix').textContent = 'Compartilhados';
-    document.getElementById('sb-count').textContent = sharedFolders.length + sharedFiles.length;
+    document.getElementById('sb-count').textContent  = sharedFolders.length + sharedFiles.length;
 
     if (!sharedFolders.length && !sharedFiles.length) {
       renderSharedEmpty('Nenhum item foi compartilhado com você ainda');
     }
   } catch(e) {
     toast('Erro ao carregar compartilhados: ' + e.message, 'err');
+    renderSharedEmpty('Erro ao carregar: ' + e.message);
   }
 }
 
