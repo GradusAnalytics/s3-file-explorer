@@ -721,7 +721,8 @@ async function uploadFile(file, id) {
   const key = currentPrefix + file.name;
   try {
     setSt('Solicitando URL...', 'prog'); setBar(5);
-    const owner = currentEmail() || 'joao.madeira@gradusconsultoria.com.br';
+    const owner = currentEmail();
+    if (PPR_USER && !owner) { setSt('✗ Sem usuário', 'err'); toast('Usuário não identificado', 'err'); return; }
     const { upload_url } = await apiPost('/files/upload-url', { key, content_type: file.type || undefined, owner });
     setSt('Enviando...', 'prog'); setBar(20);
     const xhr = new XMLHttpRequest();
@@ -749,7 +750,9 @@ function closeUploadPanel() {
 // ── Download ──
 async function downloadFile(key) {
   try {
-    const d = await apiGet('/files/download-url?key=' + encodeURIComponent(key));
+    const dlEmail = currentEmail();
+    const dlEmailParam = dlEmail ? '&email=' + encodeURIComponent(dlEmail) : '';
+    const d = await apiGet('/files/download-url?key=' + encodeURIComponent(key) + dlEmailParam);
     const a = document.createElement('a');
     a.href = d.download_url; a.download = d.filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -770,7 +773,8 @@ async function confirmMkdir() {
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
   try {
     const prefix = currentPrefix + name + '/';
-    const owner = currentEmail() || 'joao.madeira@gradusconsultoria.com.br';
+    const owner = currentEmail();
+    if (PPR_USER && !owner) { toast('Usuário não identificado', 'err'); return; }
     await apiPost('/files/mkdir', { prefix, owner });
     toast('✓ Pasta "' + name + '" criada', 'ok');
     closeModal('m-mkdir');
@@ -807,9 +811,9 @@ async function confirmRename() {
       const parent = key.includes('/') ? key.split('/').slice(0,-1).join('/') + '/' : '';
       dst = parent + newName; src = key;
     }
-    await apiPost('/files/rename', { source: src, destination: dst });
-    // Atualiza sharing.json: unregister antigo, register novo
-    const owner = currentEmail() || 'joao.madeira@gradusconsultoria.com.br';
+    const owner = currentEmail();
+    if (PPR_USER && !owner) { toast('Usuário não identificado', 'err'); return; }
+    await apiPost('/files/rename', { source: src, destination: dst, email: owner });
     try {
       await apiDelete('/sharing', { action: 'unregister', resource: src, owner });
       await apiPost('/sharing', { action: 'register', resource: dst, owner, type });
@@ -838,10 +842,10 @@ async function confirmDelete() {
   const btn = document.getElementById('btn-do-delete');
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
   try {
-    if (type === 'folder') await apiDelete('/files', { prefix: key });
-    else await apiDelete('/files', { key });
-    // Remove do sharing
-    const owner = currentEmail() || 'joao.madeira@gradusconsultoria.com.br';
+    const owner = currentEmail();
+    if (PPR_USER && !owner) { toast('Usuário não identificado', 'err'); return; }
+    if (type === 'folder') await apiDelete('/files', { prefix: key, email: owner });
+    else await apiDelete('/files', { key, email: owner });
     try { await apiDelete('/sharing', { action: 'unregister', resource: key, owner }); } catch(e) {}
     toast('✓ ' + (type==='folder'?'Pasta':'Arquivo') + ' excluído', 'ok');
     closeModal('m-delete');
@@ -918,7 +922,8 @@ async function confirmShare() {
   if (!shareRecipients.length) { toast('Adicione ao menos um e-mail', 'warn'); return; }
   const btn = document.getElementById('btn-do-share');
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
-  const owner = currentEmail() || 'joao.madeira@gradusconsultoria.com.br';
+  const owner = currentEmail();
+  if (PPR_USER && !owner) { toast('Usuário não identificado', 'err'); btn.disabled = false; btn.textContent = 'Salvar'; return; }
   let ok = 0, fail = 0;
   try {
     for (const key of shareTargetItems) {
@@ -928,8 +933,7 @@ async function confirmShare() {
       } catch(e) {}
       for (const rec of shareRecipients) {
         try {
-          // Passa owner sem verificação rígida — Lambda usa o owner registrado
-          await apiPost('/sharing', { action: 'share', resource: key, email: rec.email, mode: rec.mode });
+          await apiPost('/sharing', { action: 'share', resource: key, owner, email: rec.email, mode: rec.mode });
           ok++;
         } catch(e) { fail++; toast('Erro em ' + key + ': ' + e.message, 'err'); }
       }
@@ -945,12 +949,16 @@ async function confirmShare() {
 
 // ── Gerenciar compartilhamentos ──
 async function openManageShare(key) {
-  const owner = currentEmail() || 'joao.madeira@gradusconsultoria.com.br';
+  const owner = currentEmail();
   document.getElementById('m-manage-desc').textContent = key.split('/').filter(Boolean).pop() || key;
   document.getElementById('m-manage-body').innerHTML = '<div style="text-align:center;padding:20px;color:var(--tx3)">⏳ Carregando...</div>';
   openModal('m-manage-share');
   try {
-    const data = await apiGet('/sharing');
+    if (!owner) {
+      document.getElementById('m-manage-body').innerHTML = '<p style="font-size:13px;color:var(--tx3);text-align:center;padding:16px">Gerenciamento de compartilhamentos requer autenticação via PPR.</p>';
+      return;
+    }
+    const data = await apiGet('/sharing?email=' + encodeURIComponent(owner));
     const shares = (data.shares || []);
     const share = shares.find(s => s.resource === key);
     if (!share || !share.recipients || !share.recipients.length) {
