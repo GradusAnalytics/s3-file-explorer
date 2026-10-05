@@ -1,0 +1,545 @@
+{
+  "versao_manifest": 1,
+  "ferramenta": {
+    "codigo": "s3_file_explorer",
+    "nome": "S3 File Explorer",
+    "repositorio": "GradusAnalytics/s3-file-explorer",
+    "descricao": "Navegação, upload, download, pastas e compartilhamento de arquivos no bucket S3 diretorio-consultoria"
+  },
+  "servico": {
+    "porta": null,
+    "url_base": "https://howu3x9uga.execute-api.us-east-1.amazonaws.com",
+    "prefixo_upstream": "/",
+    "rota_ppr": null,
+    "saude": null
+  },
+  "identidade": {
+    "cabecalho_email": null,
+    "cabecalho_nome": null,
+    "cabecalhos_segredos": [
+      "X-Api-Token"
+    ]
+  },
+  "operacoes": [
+    {
+      "codigo": "listar",
+      "nome": "Listar pasta",
+      "descricao": "Lista as subpastas e os arquivos de um prefixo que o usuário pode ver, com a permissão de cada item (Lambda s3fe-list)",
+      "efeito": "leitura",
+      "metodo": "GET",
+      "caminho": "/files",
+      "corpo": null,
+      "timeout_s": 20,
+      "entradas": [
+        {
+          "codigo": "prefix",
+          "nome": "Pasta",
+          "tipo": "texto_curto",
+          "onde": "query",
+          "obrigatorio": false,
+          "padrao": "",
+          "opcoes": [],
+          "descricao": "Prefixo relativo terminado em /, por exemplo projetos/. Vazio lista a raiz"
+        },
+        {
+          "codigo": "email",
+          "nome": "E-mail do usuário",
+          "tipo": "texto_curto",
+          "onde": "query",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "E-mail de quem consulta (preenchido pelo PPR com o dono do token).",
+          "preencher_com": "email_usuario"
+        }
+      ],
+      "saidas": [
+        {
+          "codigo": "pastas",
+          "nome": "Pastas",
+          "tipo": "tabela",
+          "origem": "/folders",
+          "descricao": "Subpastas: key, name e perm (mode, is_owner, owner, recipients)"
+        },
+        {
+          "codigo": "arquivos",
+          "nome": "Arquivos",
+          "tipo": "tabela",
+          "origem": "/files",
+          "descricao": "Arquivos: key, name, size, last_modified e perm"
+        },
+        {
+          "codigo": "total",
+          "nome": "Total de itens",
+          "tipo": "numero",
+          "origem": "/total",
+          "descricao": "Quantidade de itens na pasta"
+        }
+      ]
+    },
+    {
+      "codigo": "listar_compartilhados",
+      "nome": "Listar itens visíveis",
+      "descricao": "Mapa dos recursos que o usuário vê: os próprios e os compartilhados com ele (Lambda s3fe-sharing, action=visible)",
+      "efeito": "leitura",
+      "metodo": "GET",
+      "caminho": "/sharing",
+      "corpo": null,
+      "timeout_s": 20,
+      "entradas": [
+        {
+          "codigo": "action",
+          "nome": "Ação",
+          "tipo": "picklist",
+          "onde": "query",
+          "obrigatorio": true,
+          "padrao": "visible",
+          "opcoes": [
+            "visible"
+          ],
+          "descricao": "Valor fixo exigido pela Lambda"
+        },
+        {
+          "codigo": "email",
+          "nome": "E-mail do usuário",
+          "tipo": "texto_curto",
+          "onde": "query",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "E-mail de quem consulta",
+          "preencher_com": "email_usuario"
+        }
+      ],
+      "saidas": [
+        {
+          "codigo": "visiveis",
+          "nome": "Recursos visíveis",
+          "tipo": "json",
+          "origem": "/visible",
+          "descricao": "Objeto caminho do recurso -> permissão (mode, is_owner, owner)"
+        }
+      ]
+    },
+    {
+      "codigo": "listar_compartilhamentos",
+      "nome": "Listar compartilhamentos",
+      "descricao": "Registros de compartilhamento em que o usuário é dono ou destinatário (Lambda s3fe-sharing)",
+      "efeito": "leitura",
+      "metodo": "GET",
+      "caminho": "/sharing",
+      "corpo": null,
+      "timeout_s": 20,
+      "entradas": [
+        {
+          "codigo": "email",
+          "nome": "E-mail do usuário",
+          "tipo": "texto_curto",
+          "onde": "query",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "E-mail de quem consulta",
+          "preencher_com": "email_usuario"
+        }
+      ],
+      "saidas": [
+        {
+          "codigo": "compartilhamentos",
+          "nome": "Compartilhamentos",
+          "tipo": "tabela",
+          "origem": "/shares",
+          "descricao": "resource, owner, type e recipients (email, mode, added_at)"
+        }
+      ]
+    },
+    {
+      "codigo": "url_download",
+      "nome": "Gerar link de download",
+      "descricao": "Confere a permissão de leitura e devolve uma URL pré-assinada do S3 válida por 10 minutos (Lambda s3fe-download-url)",
+      "efeito": "leitura",
+      "metodo": "GET",
+      "caminho": "/files/download-url",
+      "corpo": null,
+      "timeout_s": 20,
+      "entradas": [
+        {
+          "codigo": "key",
+          "nome": "Arquivo",
+          "tipo": "texto_curto",
+          "onde": "query",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "Caminho relativo do arquivo, por exemplo projetos/relatorio.pdf"
+        },
+        {
+          "codigo": "email",
+          "nome": "E-mail do usuário",
+          "tipo": "texto_curto",
+          "onde": "query",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "E-mail de quem baixa, usado na checagem de permissão",
+          "preencher_com": "email_usuario"
+        }
+      ],
+      "saidas": [
+        {
+          "codigo": "download_url",
+          "nome": "URL de download",
+          "tipo": "texto_curto",
+          "origem": "/download_url",
+          "descricao": "URL pré-assinada (GET) do objeto no S3"
+        },
+        {
+          "codigo": "nome_arquivo",
+          "nome": "Nome do arquivo",
+          "tipo": "texto_curto",
+          "origem": "/filename",
+          "descricao": "Nome do arquivo para salvar"
+        }
+      ]
+    },
+    {
+      "codigo": "url_upload",
+      "nome": "Gerar link de upload",
+      "descricao": "Devolve uma URL pré-assinada de PUT no S3 (5 minutos) e registra o usuário como dono do arquivo (Lambda s3fe-upload-url). O envio do arquivo é um PUT direto nessa URL",
+      "efeito": "escrita",
+      "metodo": "POST",
+      "caminho": "/files/upload-url",
+      "corpo": "json",
+      "timeout_s": 20,
+      "entradas": [
+        {
+          "codigo": "key",
+          "nome": "Caminho de destino",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "Caminho relativo do novo arquivo, por exemplo projetos/relatorio.pdf"
+        },
+        {
+          "codigo": "owner",
+          "nome": "E-mail do dono",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "E-mail registrado como dono no controle de compartilhamento",
+          "preencher_com": "email_usuario"
+        },
+        {
+          "codigo": "content_type",
+          "nome": "Tipo do conteúdo",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": false,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "MIME type; se vazio, a Lambda deduz pela extensão"
+        }
+      ],
+      "saidas": [
+        {
+          "codigo": "upload_url",
+          "nome": "URL de upload",
+          "tipo": "texto_curto",
+          "origem": "/upload_url",
+          "descricao": "URL pré-assinada para PUT do arquivo no S3"
+        }
+      ]
+    },
+    {
+      "codigo": "criar_pasta",
+      "nome": "Criar pasta",
+      "descricao": "Cria uma pasta e registra o dono; 409 se já existir (Lambda s3fe-mkdir)",
+      "efeito": "escrita",
+      "metodo": "POST",
+      "caminho": "/files/mkdir",
+      "corpo": "json",
+      "timeout_s": 20,
+      "entradas": [
+        {
+          "codigo": "prefix",
+          "nome": "Pasta",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "Caminho relativo da nova pasta terminado em /, por exemplo projetos/novo/"
+        },
+        {
+          "codigo": "owner",
+          "nome": "E-mail do dono",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "E-mail registrado como dono da pasta",
+          "preencher_com": "email_usuario"
+        }
+      ],
+      "saidas": [
+        {
+          "codigo": "resultado",
+          "nome": "Resultado",
+          "tipo": "json",
+          "origem": "",
+          "descricao": "Resposta da Lambda"
+        }
+      ]
+    },
+    {
+      "codigo": "renomear",
+      "nome": "Renomear ou mover",
+      "descricao": "Renomeia ou move um arquivo ou pasta (pasta: cópia recursiva e exclusão) e atualiza o compartilhamento; exige permissão de edição (Lambda s3fe-rename)",
+      "efeito": "escrita",
+      "metodo": "POST",
+      "caminho": "/files/rename",
+      "corpo": "json",
+      "timeout_s": 30,
+      "entradas": [
+        {
+          "codigo": "source",
+          "nome": "Origem",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "Caminho relativo atual (pasta termina em /)"
+        },
+        {
+          "codigo": "destination",
+          "nome": "Destino",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "Novo caminho relativo (pasta termina em /)"
+        },
+        {
+          "codigo": "email",
+          "nome": "E-mail do usuário",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "E-mail de quem renomeia, conferido contra a permissão de edição",
+          "preencher_com": "email_usuario"
+        }
+      ],
+      "saidas": [
+        {
+          "codigo": "resultado",
+          "nome": "Resultado",
+          "tipo": "json",
+          "origem": "",
+          "descricao": "Resposta da Lambda"
+        }
+      ]
+    },
+    {
+      "codigo": "excluir",
+      "nome": "Excluir arquivo ou pasta",
+      "descricao": "Exclui um arquivo (key) ou uma pasta inteira (prefix, até 1.000 objetos) e limpa o compartilhamento; exige permissão de edição (Lambda s3fe-delete)",
+      "efeito": "escrita",
+      "metodo": "DELETE",
+      "caminho": "/files",
+      "corpo": "json",
+      "timeout_s": 30,
+      "entradas": [
+        {
+          "codigo": "key",
+          "nome": "Arquivo",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": false,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "Caminho relativo do arquivo. Informe key ou prefix"
+        },
+        {
+          "codigo": "prefix",
+          "nome": "Pasta",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": false,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "Caminho relativo da pasta terminado em /, excluída com todo o conteúdo. Informe key ou prefix"
+        },
+        {
+          "codigo": "email",
+          "nome": "E-mail do usuário",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "E-mail de quem exclui, conferido contra a permissão de edição",
+          "preencher_com": "email_usuario"
+        }
+      ],
+      "saidas": [
+        {
+          "codigo": "resultado",
+          "nome": "Resultado",
+          "tipo": "json",
+          "origem": "",
+          "descricao": "Resposta da Lambda"
+        }
+      ]
+    },
+    {
+      "codigo": "compartilhar",
+      "nome": "Compartilhar",
+      "descricao": "Dá ou altera o acesso de um destinatário a um arquivo ou pasta; só o dono pode (Lambda s3fe-sharing, action=share)",
+      "efeito": "escrita",
+      "metodo": "POST",
+      "caminho": "/sharing",
+      "corpo": "json",
+      "timeout_s": 20,
+      "entradas": [
+        {
+          "codigo": "action",
+          "nome": "Ação",
+          "tipo": "picklist",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": "share",
+          "opcoes": [
+            "share"
+          ],
+          "descricao": "Valor fixo exigido pela Lambda"
+        },
+        {
+          "codigo": "resource",
+          "nome": "Recurso",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "Caminho relativo do arquivo ou da pasta (pasta termina em /)"
+        },
+        {
+          "codigo": "owner",
+          "nome": "E-mail do dono",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "E-mail de quem compartilha; precisa ser o dono registrado",
+          "preencher_com": "email_usuario"
+        },
+        {
+          "codigo": "email",
+          "nome": "E-mail do destinatário",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "E-mail de quem recebe o acesso"
+        },
+        {
+          "codigo": "mode",
+          "nome": "Permissão",
+          "tipo": "picklist",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": "view",
+          "opcoes": [
+            "view",
+            "edit"
+          ],
+          "descricao": "view = visualização; edit = edição"
+        }
+      ],
+      "saidas": [
+        {
+          "codigo": "resultado",
+          "nome": "Resultado",
+          "tipo": "json",
+          "origem": "",
+          "descricao": "Resposta da Lambda"
+        }
+      ]
+    },
+    {
+      "codigo": "remover_compartilhamento",
+      "nome": "Remover compartilhamento",
+      "descricao": "Tira o acesso de um destinatário; só o dono pode (Lambda s3fe-sharing, action=unshare)",
+      "efeito": "escrita",
+      "metodo": "DELETE",
+      "caminho": "/sharing",
+      "corpo": "json",
+      "timeout_s": 20,
+      "entradas": [
+        {
+          "codigo": "action",
+          "nome": "Ação",
+          "tipo": "picklist",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": "unshare",
+          "opcoes": [
+            "unshare"
+          ],
+          "descricao": "Valor fixo exigido pela Lambda"
+        },
+        {
+          "codigo": "resource",
+          "nome": "Recurso",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "Caminho relativo do arquivo ou da pasta"
+        },
+        {
+          "codigo": "owner",
+          "nome": "E-mail do dono",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "E-mail de quem remove; precisa ser o dono registrado",
+          "preencher_com": "email_usuario"
+        },
+        {
+          "codigo": "email",
+          "nome": "E-mail do destinatário",
+          "tipo": "texto_curto",
+          "onde": "corpo",
+          "obrigatorio": true,
+          "padrao": null,
+          "opcoes": [],
+          "descricao": "E-mail de quem perde o acesso"
+        }
+      ],
+      "saidas": [
+        {
+          "codigo": "resultado",
+          "nome": "Resultado",
+          "tipo": "json",
+          "origem": "",
+          "descricao": "Resposta da Lambda"
+        }
+      ]
+    }
+  ]
+}
